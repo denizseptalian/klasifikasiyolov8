@@ -1,27 +1,32 @@
 import streamlit as st
+import torch
 import cv2
 import numpy as np
 from PIL import Image
 from collections import Counter
-import os
+import tempfile
 
-# Import YOLOv8
-from ultralytics import YOLO
-
-# Load model hanya sekali
+# Load YOLOv8 model
 @st.cache_resource
 def load_model():
-    model = YOLO("best.pt")
+    model = torch.hub.load('ultralytics/yolov5', 'custom', path='best.pt', force_reload=True)
     return model
 
+# Predict using the YOLOv8 model
 def predict_image(model, image):
-    image = np.array(image.convert("RGB"))
     results = model(image)
     return results
 
+# Draw bounding boxes and class labels
 def draw_results(image, results):
     img = np.array(image.convert("RGB"))
     class_counts = Counter()
+
+    class_colors = {
+        "Masak": (0, 165, 255),     # Orange
+        "Mengkal": (0, 255, 255),   # Yellow
+        "Mentah": (0, 0, 0),        # Black
+    }
 
     for result in results:
         boxes = result.boxes
@@ -30,47 +35,60 @@ def draw_results(image, results):
         for box in boxes:
             x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
             class_id = int(box.cls[0].item())
-            label = f"{names[class_id]}: {box.conf[0]:.2f}"
+            conf = box.conf[0].item()
+            class_name = names[class_id]
+            label = f"{class_name}: {conf:.2f}"
 
-            class_counts[names[class_id]] += 1
-            cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            cv2.putText(img, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            class_counts[class_name] += 1
+            color = class_colors.get(class_name, (0, 255, 0))  # default green
+
+            scale_factor = img.shape[1] / 640
+            cv2.rectangle(img, (x1, y1), (x2, y2), color, int(2 * scale_factor))
+            cv2.putText(img, label, (x1, max(0, y1 - 10)), cv2.FONT_HERSHEY_SIMPLEX,
+                        0.7 * scale_factor, color, max(1, int(2 * scale_factor)))
 
     return img, class_counts
 
-# UI Aplikasi
-st.title("Deteksi dan Klasifikasi Kematangan Buah Sawit")
+# Streamlit UI
+st.set_page_config(page_title="Deteksi Buah Sawit", layout="centered")
+st.title("🌴 Deteksi & Klasifikasi Buah Sawit")
+st.markdown("Unggah gambar atau gunakan kamera untuk mendeteksi buah kelapa sawit berdasarkan tingkat kematangan.")
 
-# Tampilkan ilustrasi jika tersedia
-if os.path.exists("Buah-Kelapa-Sawit.jpg"):
-    st.image("Buah-Kelapa-Sawit.jpg", use_container_width=True)
+# Ilustrasi gambar
+st.image("Buah-Kelapa-Sawit.jpg", use_container_width=True)
 
-# Pilihan input
-option = st.radio("Pilih metode input gambar:", ("Upload Gambar", "Gunakan Kamera"))
+# Load model saat start
+model = load_model()
 
-image = None
+# Tab upload & kamera
+tab1, tab2 = st.tabs(["📁 Upload Gambar", "📷 Buka Kamera"])
 
-if option == "Upload Gambar":
+with tab1:
     uploaded_file = st.file_uploader("Unggah gambar", type=["jpg", "jpeg", "png"])
-    if uploaded_file:
+    if uploaded_file is not None:
         image = Image.open(uploaded_file)
-        st.image(image, caption="Gambar yang diunggah", use_container_width=True)
+        st.image(image, caption="Gambar yang Diunggah", use_container_width=True)
 
-elif option == "Gunakan Kamera":
-    camera_file = st.camera_input("Ambil gambar dengan kamera")
-    if camera_file:
-        image = Image.open(camera_file)
+        if st.button("🔍 Predict dari Upload"):
+            results = predict_image(model, image)
+            processed_image, class_counts = draw_results(image, results)
+
+            st.image(processed_image, caption="Hasil Deteksi", use_container_width=True)
+            st.subheader("📊 Jumlah Kelas Terdeteksi:")
+            for cls, count in class_counts.items():
+                st.write(f"- {cls}: {count}")
+
+with tab2:
+    camera_image = st.camera_input("Ambil Gambar")
+    if camera_image is not None:
+        image = Image.open(camera_image)
         st.image(image, caption="Gambar dari Kamera", use_container_width=True)
 
-# Prediksi
-if image and st.button("Prediksi"):
-    with st.spinner("Sedang memproses prediksi..."):
-        model = load_model()
-        results = predict_image(model, image)
-        processed_image, class_counts = draw_results(image, results)
+        if st.button("🔍 Predict dari Kamera"):
+            results = predict_image(model, image)
+            processed_image, class_counts = draw_results(image, results)
 
-        st.image(processed_image, caption="Hasil Deteksi", use_container_width=True)
-
-        st.subheader("Jumlah Objek per Kelas")
-        for class_name, count in class_counts.items():
-            st.write(f"{class_name}: {count}")
+            st.image(processed_image, caption="Hasil Deteksi", use_container_width=True)
+            st.subheader("📊 Jumlah Kelas Terdeteksi:")
+            for cls, count in class_counts.items():
+                st.write(f"- {cls}: {count}")
