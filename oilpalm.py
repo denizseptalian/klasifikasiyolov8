@@ -1,23 +1,23 @@
 import streamlit as st
-import torch
 import cv2
 import numpy as np
 from PIL import Image
 from collections import Counter
-import tempfile
+from ultralytics import YOLO
 
 # Load YOLOv8 model
 @st.cache_resource
 def load_model():
-    model = torch.hub.load('ultralytics/yolov5', 'custom', path='best.pt', force_reload=True)
+    model = YOLO("best.pt")  # pastikan best.pt ada di folder yang sama
     return model
 
-# Predict using the YOLOv8 model
+# Predict
 def predict_image(model, image):
-    results = model(image)
+    image_array = np.array(image.convert("RGB"))
+    results = model.predict(source=image_array, conf=0.25)
     return results
 
-# Draw bounding boxes and class labels
+# Draw bounding boxes
 def draw_results(image, results):
     img = np.array(image.convert("RGB"))
     class_counts = Counter()
@@ -32,20 +32,19 @@ def draw_results(image, results):
         boxes = result.boxes
         names = result.names
 
-        for box in boxes:
+        for i in range(len(boxes)):
+            box = boxes[i]
             x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
             class_id = int(box.cls[0].item())
             conf = box.conf[0].item()
             class_name = names[class_id]
             label = f"{class_name}: {conf:.2f}"
-
             class_counts[class_name] += 1
-            color = class_colors.get(class_name, (0, 255, 0))  # default green
+            color = class_colors.get(class_name, (0, 255, 0))
 
-            scale_factor = img.shape[1] / 640
-            cv2.rectangle(img, (x1, y1), (x2, y2), color, int(2 * scale_factor))
-            cv2.putText(img, label, (x1, max(0, y1 - 10)), cv2.FONT_HERSHEY_SIMPLEX,
-                        0.7 * scale_factor, color, max(1, int(2 * scale_factor)))
+            cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
+            cv2.putText(img, label, (x1, max(0, y1 - 10)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
 
     return img, class_counts
 
@@ -54,13 +53,10 @@ st.set_page_config(page_title="Deteksi Buah Sawit", layout="centered")
 st.title("🌴 Deteksi & Klasifikasi Buah Sawit")
 st.markdown("Unggah gambar atau gunakan kamera untuk mendeteksi buah kelapa sawit berdasarkan tingkat kematangan.")
 
-# Ilustrasi gambar
 st.image("Buah-Kelapa-Sawit.jpg", use_container_width=True)
 
-# Load model saat start
 model = load_model()
 
-# Tab upload & kamera
 tab1, tab2 = st.tabs(["📁 Upload Gambar", "📷 Buka Kamera"])
 
 with tab1:
