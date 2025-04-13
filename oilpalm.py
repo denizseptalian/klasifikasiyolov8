@@ -1,4 +1,7 @@
 import streamlit as st
+# Harus di sini (PALING ATAS)
+st.set_page_config(page_title="YOLOv8 Klasifikasi Buah Sawit", layout="centered")
+
 import numpy as np
 import cv2
 from PIL import Image
