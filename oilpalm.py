@@ -1,96 +1,87 @@
 import streamlit as st
-# Harus di sini (PALING ATAS)
+import cv2
+import numpy as np
+from PIL import Image
+from collections import Counter
+from ultralytics import YOLO
+
 st.set_page_config(page_title="YOLOv8 Klasifikasi Buah Sawit", layout="centered")
 
-import numpy as np
-import cv2
-from PIL import Image
-import tempfile
-import os
-from ultralytics import YOLO
-import supervision as sv
-
-# Load YOLOv8 model (ganti 'best.pt' dengan path model kamu)
 @st.cache_resource
 def load_model():
     model = YOLO("best.pt")
     return model
 
-model = load_model()
+def predict_image(model, image):
+    image_array = np.array(image.convert("RGB"))
+    results = model.predict(source=image_array, conf=0.25)
+    return results
 
-# Fungsi anotasi menggunakan supervision
-def annotate_image(image: np.ndarray, results) -> tuple:
-    detections = sv.Detections.from_ultralytics(results[0])
+def draw_results(image, results):
+    img = np.array(image.convert("RGB"))
+    class_counts = Counter()
 
-    class_names = results[0].names
     class_colors = {
-        "Masak": sv.Color.ORANGE,
-        "Mengkal": sv.Color.YELLOW,
-        "Mentah": sv.Color.BLACK
+        "Masak": (0, 165, 255),     # Orange
+        "Mengkal": (0, 255, 255),   # Yellow
+        "Mentah": (0, 0, 0),        # Black
     }
 
-    color_lookup = [
-        class_colors.get(class_names[class_id], sv.Color.WHITE)
-        for class_id in detections.class_id
-    ]
+    for result in results:
+        boxes = result.boxes
+        names = result.names
 
-    box_annotator = sv.BoxAnnotator(
-        thickness=4,
-        text_thickness=2,
-        text_scale=1.1,
-        text_padding=5,
-        text_color=sv.Color.WHITE,
-        text_background=sv.Color.BLACK
-    )
+        for i in range(len(boxes)):
+            box = boxes[i]
+            x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+            class_id = int(box.cls[0].item())
+            conf = box.conf[0].item()
+            class_name = names[class_id]
+            label = f"{class_name}: {conf:.2f}"
+            class_counts[class_name] += 1
+            color = class_colors.get(class_name, (0, 255, 0))
 
-    labels = [class_names[class_id] for class_id in detections.class_id]
+            cv2.rectangle(img, (x1, y1), (x2, y2), color, 3)
+            cv2.putText(img, label, (x1, max(0, y1 - 10)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
 
-    annotated_img = box_annotator.annotate(
-        scene=image.copy(),
-        detections=detections,
-        labels=labels,
-        color=color_lookup
-    )
+    return img, class_counts
 
-    return annotated_img, detections
+# UI
+st.title("🌴 Deteksi & Klasifikasi Buah Sawit")
+st.markdown("Unggah gambar atau gunakan kamera untuk mendeteksi buah kelapa sawit berdasarkan tingkat kematangan.")
+st.image("Buah-Kelapa-Sawit.jpg", use_container_width=True)
 
+model = load_model()
 
-# Streamlit UI
-st.title("📸 Klasifikasi Buah Sawit Menggunakan YOLOv8")
-st.markdown("Upload gambar buah sawit dan deteksi tingkat kematangannya secara otomatis.")
+tab1, tab2 = st.tabs(["📁 Upload Gambar", "📷 Buka Kamera"])
 
-uploaded_file = st.file_uploader("Upload Gambar", type=["jpg", "jpeg", "png"])
+with tab1:
+    uploaded_file = st.file_uploader("Unggah gambar", type=["jpg", "jpeg", "png"])
+    if uploaded_file is not None:
+        image = Image.open(uploaded_file)
+        st.image(image, caption="Gambar yang Diunggah", use_container_width=True)
 
-if uploaded_file is not None:
-    image = Image.open(uploaded_file).convert("RGB")
-    image_np = np.array(image)
+        if st.button("🔍 Predict dari Upload"):
+            results = predict_image(model, image)
+            processed_image, class_counts = draw_results(image, results)
 
-    st.image(image, caption="Gambar Asli", use_column_width=True)
+            st.image(processed_image, caption="Hasil Deteksi", use_container_width=True)
+            st.subheader("📊 Jumlah Kelas Terdeteksi:")
+            for cls, count in class_counts.items():
+                st.write(f"- {cls}: {count}")
 
-    with st.spinner("🚀 Mendeteksi..."):
-        # Simpan sementara gambar
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_file:
-            tmp_path = tmp_file.name
-            image.save(tmp_path)
+with tab2:
+    camera_image = st.camera_input("Ambil Gambar dari Kamera")
+    if camera_image is not None:
+        image = Image.open(camera_image)
+        st.image(image, caption="Gambar dari Kamera", use_container_width=True)
 
-        # Prediksi menggunakan YOLOv8
-        results = model(tmp_path)
+        if st.button("🔍 Predict dari Kamera"):
+            results = predict_image(model, image)
+            processed_image, class_counts = draw_results(image, results)
 
-        # Hapus file sementara
-        os.remove(tmp_path)
-
-        # Anotasi
-        annotated_img, detections = annotate_image(image_np, results)
-
-        st.image(annotated_img, caption="Hasil Deteksi", use_column_width=True)
-
-        # Hitung jumlah buah berdasarkan kelas
-        class_names = results[0].names
-        count_dict = {}
-        for class_id in detections.class_id:
-            label = class_names[class_id]
-            count_dict[label] = count_dict.get(label, 0) + 1
-
-        st.subheader("📊 Jumlah Buah per Kategori:")
-        for k, v in count_dict.items():
-            st.markdown(f"- **{k}**: {v} buah")
+            st.image(processed_image, caption="Hasil Deteksi", use_container_width=True)
+            st.subheader("📊 Jumlah Kelas Terdeteksi:")
+            for cls, count in class_counts.items():
+                st.write(f"- {cls}: {count}")
