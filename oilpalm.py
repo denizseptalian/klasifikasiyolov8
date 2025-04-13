@@ -56,7 +56,6 @@ def annotate_image(image: np.ndarray, results) -> tuple:
 
 
 # Streamlit UI
-st.set_page_config(page_title="YOLOv8 Klasifikasi Buah Sawit", layout="centered")
 st.title("📸 Klasifikasi Buah Sawit Menggunakan YOLOv8")
 st.markdown("Upload gambar buah sawit dan deteksi tingkat kematangannya secara otomatis.")
 
