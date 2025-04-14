@@ -13,7 +13,7 @@ st.set_page_config(page_title="Deteksi Buah Sawit", layout="centered")
 # Load YOLO model
 @st.cache_resource
 def load_model():
-    model = YOLO("best.pt")
+    model = YOLO("best2.pt")
     return model
 
 def predict_image(model, image):
