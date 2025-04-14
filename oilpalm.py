@@ -56,43 +56,41 @@ if option == "Upload Gambar":
 elif option == "Gunakan Kamera (Flip)":
     st.markdown("### Kamera Flip (Depan ↔ Belakang)")
 
-    # Kontrol tombol flip
-    flip = st.button("🔄 Flip Kamera")
-    capture = st.button("📸 Ambil Gambar")
-
-    # Simpan status flip kamera
-    if "flip_state" not in st.session_state:
-        st.session_state.flip_state = True
-
-    if flip:
-        st.session_state.flip_state = not st.session_state.flip_state
-
-    facing_mode = "environment" if st.session_state.flip_state else "user"
-
-    html_code = f"""
-    <video id="video" autoplay playsinline style="width: 100%; border:1px solid gray;"></video><br>
-    <canvas id="canvas" style="display: none;"></canvas>
+    html_code = """
+    <!DOCTYPE html>
+    <html>
+    <body>
+    <video id="video" width="100%" autoplay playsinline style="border:1px solid gray;"></video><br>
+    <button onclick="flipCamera()">🔄 Flip Kamera</button>
+    <button onclick="takePhoto()">📸 Ambil Gambar</button>
+    <canvas id="canvas" style="display:none;"></canvas>
     <script>
+    let useBackCamera = true;
     let stream;
 
-    async function startCamera() {{
-        if (stream) {{
+    async function startCamera() {
+        if (stream) {
             stream.getTracks().forEach(track => track.stop());
-        }}
-        const constraints = {{
-            video: {{
-                facingMode: {{ exact: "{facing_mode}" }}
-            }}
-        }};
-        try {{
+        }
+        const constraints = {
+            video: {
+                facingMode: useBackCamera ? { exact: "environment" } : "user"
+            }
+        };
+        try {
             stream = await navigator.mediaDevices.getUserMedia(constraints);
             document.getElementById('video').srcObject = stream;
-        }} catch (err) {{
+        } catch (err) {
             alert("Tidak dapat mengakses kamera: " + err.message);
-        }}
-    }}
+        }
+    }
 
-    function takePhoto() {{
+    function flipCamera() {
+        useBackCamera = !useBackCamera;
+        startCamera();
+    }
+
+    function takePhoto() {
         const canvas = document.getElementById('canvas');
         const video = document.getElementById('video');
         canvas.width = video.videoWidth;
@@ -101,17 +99,18 @@ elif option == "Gunakan Kamera (Flip)":
         const dataUrl = canvas.toDataURL('image/png');
         const input = window.parent.document.querySelector("input#camera_image_input");
         input.value = dataUrl;
-        input.dispatchEvent(new Event("input", {{ bubbles: true }}));
-    }}
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
 
     window.onload = startCamera;
-    {'takePhoto();' if capture else ''}
     </script>
+    </body>
+    </html>
     """
 
     st.components.v1.html(html_code, height=500)
 
-    base64_img = st.text_input("📷 Hasil Kamera", key="camera_image_input", label_visibility="collapsed")
+    base64_img = st.text_input("📷 Hasil Kamera (tersembunyi)", key="camera_image_input", label_visibility="collapsed")
 
     if base64_img:
         header, encoded = base64_img.split(",", 1)
