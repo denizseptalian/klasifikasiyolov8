@@ -1,26 +1,26 @@
 import streamlit as st
-from PIL import Image
 import cv2
 import numpy as np
-from ultralytics import YOLO
+from PIL import Image
 from collections import Counter
 import base64
 from io import BytesIO
+from ultralytics import YOLO
 
-st.set_page_config(page_title="Deteksi Sawit", layout="centered")
+st.set_page_config(page_title="Deteksi Buah Sawit", layout="centered")
 
-# Load YOLO model
+# Load model hanya sekali
 @st.cache_resource
 def load_model():
-    return YOLO("best2.pt")
+    return YOLO("best2.pt")  # Ganti dengan path modelmu
 
 def predict_image(model, image):
-    image_np = np.array(image.convert("RGB"))
-    results = model(image_np)
+    image = np.array(image.convert("RGB"))
+    results = model(image)
     return results
 
 def draw_results(image, results):
-    image_np = np.array(image.convert("RGB"))
+    img = np.array(image.convert("RGB"))
     class_counts = Counter()
 
     for result in results:
@@ -33,33 +33,41 @@ def draw_results(image, results):
             label = f"{names[class_id]}: {box.conf[0]:.2f}"
 
             class_counts[names[class_id]] += 1
-            cv2.rectangle(image_np, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            cv2.putText(image_np, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            cv2.putText(img, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
-    return image_np, class_counts
+    return img, class_counts
 
-# App title
+
+# Inisialisasi session_state
+if "camera_image" not in st.session_state:
+    st.session_state["camera_image"] = ""
+
+# Judul Aplikasi
 st.title("📷 Deteksi dan Klasifikasi Kematangan Buah Sawit")
+st.markdown("Pilih metode input gambar:")
 
-option = st.radio("Pilih metode input gambar:", ("Upload Gambar", "Gunakan Kamera"))
+# Pilih metode input
+option = st.radio("", ["Upload Gambar", "Gunakan Kamera"])
 
 image = None
 
+# Upload gambar manual
 if option == "Upload Gambar":
     uploaded_file = st.file_uploader("Unggah gambar", type=["jpg", "jpeg", "png"])
     if uploaded_file:
         image = Image.open(uploaded_file)
         st.image(image, caption="Gambar yang diunggah", use_container_width=True)
 
+# Kamera langsung (belakang)
 elif option == "Gunakan Kamera":
-    st.markdown("### Kamera Belakang")
+    st.markdown("### Kamera Belakang (Environment)")
 
     camera_code = """
     <div>
         <video id="video" autoplay playsinline width="100%" style="border:1px solid gray;"></video>
         <button onclick="takePhoto()" style="margin-top:10px;">📸 Ambil Gambar</button>
         <canvas id="canvas" style="display:none;"></canvas>
-        <input type="hidden" id="imgData" name="imgData">
     </div>
 
     <script>
@@ -84,51 +92,43 @@ elif option == "Gunakan Kamera":
             canvas.height = video.videoHeight;
             context.drawImage(video, 0, 0, canvas.width, canvas.height);
             const dataURL = canvas.toDataURL('image/png');
-            const imgData = document.getElementById('imgData');
-            imgData.value = dataURL;
 
-            // Kirim ke Streamlit input
-            const streamlitInput = window.parent.document.querySelector('input[data-testid="stTextInput"]');
-            streamlitInput.value = dataURL;
-            streamlitInput.dispatchEvent(new Event("input", { bubbles: true }));
+            // Kirim data ke Streamlit
+            const inputBox = window.parent.document.querySelector('textarea[data-testid="stTextArea"]');
+            inputBox.value = dataURL;
+            inputBox.dispatchEvent(new Event("input", { bubbles: true }));
         }
 
         window.onload = startCamera;
     </script>
     """
-    st.components.v1.html(camera_code, height=520)
 
-    base64_img = st.text_input("📷 Gambar kamera:", label_visibility="collapsed")
+    # Tampilkan kamera dan tombol ambil
+    st.components.v1.html(camera_code, height=500)
 
-    if base64_img:
+    # Input tersembunyi untuk base64 image dari kamera
+    base64_img = st.text_area("Hidden Camera Input", value=st.session_state["camera_image"], label_visibility="collapsed")
+
+    if base64_img and base64_img.startswith("data:image"):
+        st.session_state["camera_image"] = base64_img  # Simpan base64 image
+
         try:
             header, encoded = base64_img.split(",", 1)
             decoded = base64.b64decode(encoded)
             image = Image.open(BytesIO(decoded))
             st.image(image, caption="📷 Gambar dari Kamera", use_container_width=True)
 
-            # Prediksi otomatis
-            with st.spinner("🔍 Memproses gambar..."):
-                model = load_model()
-                results = predict_image(model, image)
-                img_with_boxes, class_counts = draw_results(image, results)
-
-                st.image(img_with_boxes, caption="📊 Hasil Deteksi", use_container_width=True)
-
-                st.subheader("Jumlah Objek Terdeteksi:")
-                for name, count in class_counts.items():
-                    st.write(f"- **{name}**: {count}")
         except Exception as e:
-            st.error(f"Gagal membaca gambar: {e}")
+            st.error(f"Gagal memproses gambar: {e}")
 
-if image and option == "Upload Gambar":
-    if st.button("🔍 Prediksi"):
-        with st.spinner("Sedang memproses..."):
-            model = load_model()
-            results = predict_image(model, image)
-            img_with_boxes, class_counts = draw_results(image, results)
+# Jalankan prediksi jika ada gambar
+if image:
+    with st.spinner("🔍 Memproses gambar..."):
+        model = load_model()
+        results = predict_image(model, image)
+        img_with_boxes, class_counts = draw_results(image, results)
 
-            st.image(img_with_boxes, caption="📊 Hasil Deteksi", use_container_width=True)
-            st.subheader("Jumlah Objek Terdeteksi:")
-            for name, count in class_counts.items():
-                st.write(f"- **{name}**: {count}")
+        st.image(img_with_boxes, caption="📊 Hasil Deteksi", use_container_width=True)
+        st.subheader("Jumlah Objek Terdeteksi:")
+        for name, count in class_counts.items():
+            st.write(f"- **{name}**: {count}")
