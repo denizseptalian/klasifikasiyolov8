@@ -8,19 +8,22 @@ import base64
 from io import BytesIO
 from ultralytics import YOLO
 
+# Set halaman
 st.set_page_config(page_title="Deteksi Buah Sawit", layout="centered")
 
-# Load YOLO model
+# Load model hanya sekali
 @st.cache_resource
 def load_model():
-    model = YOLO("best2.pt")
+    model = YOLO("best2.pt")  # Pastikan file best2.pt ada di folder yang sama
     return model
 
+# Prediksi dengan YOLO
 def predict_image(model, image):
     image = np.array(image.convert("RGB"))
     results = model(image)
     return results
 
+# Gambar kotak deteksi dan hitung objek
 def draw_results(image, results):
     img = np.array(image.convert("RGB"))
     class_counts = Counter()
@@ -40,26 +43,40 @@ def draw_results(image, results):
 
     return img, class_counts
 
+# Judul Aplikasi
 st.title("📷 Deteksi dan Klasifikasi Kematangan Buah Sawit")
 
+# Gambar header (jika ada)
 if os.path.exists("Buah-Kelapa-Sawit.jpg"):
     st.image("Buah-Kelapa-Sawit.jpg", use_container_width=True)
 
-# Input metode
+# Pilih metode input
 option = st.radio("Pilih metode input gambar:", ("Upload Gambar", "Gunakan Kamera (Flip)"))
-
 image = None
 
+# Upload Gambar
 if option == "Upload Gambar":
     uploaded_file = st.file_uploader("Unggah gambar", type=["jpg", "jpeg", "png"])
     if uploaded_file:
         image = Image.open(uploaded_file)
-        st.image(image, caption="Gambar yang diunggah", use_container_width=True)
+        st.image(image, caption="📁 Gambar yang diunggah", use_container_width=True)
 
+        if st.button("Prediksi"):
+            with st.spinner("Sedang memproses prediksi..."):
+                model = load_model()
+                results = predict_image(model, image)
+                processed_image, class_counts = draw_results(image, results)
+
+                st.image(processed_image, caption="🧠 Hasil Deteksi", use_container_width=True)
+                st.subheader("📊 Jumlah Objek Terdeteksi:")
+                for class_name, count in class_counts.items():
+                    st.write(f"- **{class_name}**: {count}")
+
+# Kamera
 elif option == "Gunakan Kamera (Flip)":
     st.markdown("### Kamera (Depan ↔ Belakang)")
 
-    # HTML + JS untuk flip kamera
+    # HTML + JS kamera dengan flip dan ambil gambar
     js_code = """
     <script>
       let useBackCamera = true;
@@ -112,27 +129,26 @@ elif option == "Gunakan Kamera (Flip)":
     <button onclick="takePhoto()">📸 Ambil Gambar</button>
     """
 
-    # Render JS kamera
+    # Render komponen kamera
     st.components.v1.html(js_code, height=480)
 
-    # Hidden input untuk ambil hasil Base64
+    # Tempat untuk hasil base64 dari foto
     base64_img = st.text_input("📷 Gambar kamera:", key="camera_image_input", label_visibility="collapsed")
 
     if base64_img:
+        # Decode dan tampilkan
         header, encoded = base64_img.split(",", 1)
         decoded_bytes = base64.b64decode(encoded)
         image = Image.open(BytesIO(decoded_bytes))
         st.image(image, caption="📷 Gambar dari Kamera", use_container_width=True)
 
-# Prediksi
-if image and st.button("Prediksi"):
-    with st.spinner("Sedang memproses prediksi..."):
-        model = load_model()
-        results = predict_image(model, image)
-        processed_image, class_counts = draw_results(image, results)
+        # Langsung prediksi otomatis
+        with st.spinner("Sedang memproses prediksi..."):
+            model = load_model()
+            results = predict_image(model, image)
+            processed_image, class_counts = draw_results(image, results)
 
-        st.image(processed_image, caption="Hasil Deteksi", use_container_width=True)
-
-        st.subheader("Jumlah Objek Terdeteksi:")
-        for class_name, count in class_counts.items():
-            st.write(f"- **{class_name}**: {count}")
+            st.image(processed_image, caption="🧠 Hasil Deteksi", use_container_width=True)
+            st.subheader("📊 Jumlah Objek Terdeteksi:")
+            for class_name, count in class_counts.items():
+                st.write(f"- **{class_name}**: {count}")
