@@ -8,22 +8,20 @@ import base64
 from io import BytesIO
 from ultralytics import YOLO
 
-# Set halaman
 st.set_page_config(page_title="Deteksi Buah Sawit", layout="centered")
 
-# Load model hanya sekali
+# Load YOLO model
 @st.cache_resource
 def load_model():
-    model = YOLO("best2.pt")  # Pastikan file best2.pt ada di folder yang sama
-    return model
+    return YOLO("best2.pt")  # ganti jika path model berbeda
 
-# Prediksi dengan YOLO
+# Prediksi dari gambar
 def predict_image(model, image):
     image = np.array(image.convert("RGB"))
     results = model(image)
     return results
 
-# Gambar kotak deteksi dan hitung objek
+# Gambar hasil deteksi
 def draw_results(image, results):
     img = np.array(image.convert("RGB"))
     class_counts = Counter()
@@ -43,43 +41,24 @@ def draw_results(image, results):
 
     return img, class_counts
 
-# Judul Aplikasi
+# UI
 st.title("📷 Deteksi dan Klasifikasi Kematangan Buah Sawit")
 
-# Gambar header (jika ada)
-if os.path.exists("Buah-Kelapa-Sawit.jpg"):
-    st.image("Buah-Kelapa-Sawit.jpg", use_container_width=True)
+option = st.radio("Pilih metode input gambar:", ("Upload Gambar", "Gunakan Kamera"))
 
-# Pilih metode input
-option = st.radio("Pilih metode input gambar:", ("Upload Gambar", "Gunakan Kamera (Flip)"))
 image = None
 
-# Upload Gambar
 if option == "Upload Gambar":
     uploaded_file = st.file_uploader("Unggah gambar", type=["jpg", "jpeg", "png"])
     if uploaded_file:
         image = Image.open(uploaded_file)
-        st.image(image, caption="📁 Gambar yang diunggah", use_container_width=True)
+        st.image(image, caption="Gambar yang diunggah", use_container_width=True)
 
-        if st.button("Prediksi"):
-            with st.spinner("Sedang memproses prediksi..."):
-                model = load_model()
-                results = predict_image(model, image)
-                processed_image, class_counts = draw_results(image, results)
+elif option == "Gunakan Kamera":
+    st.markdown("### Kamera Belakang (Environment)")
 
-                st.image(processed_image, caption="🧠 Hasil Deteksi", use_container_width=True)
-                st.subheader("📊 Jumlah Objek Terdeteksi:")
-                for class_name, count in class_counts.items():
-                    st.write(f"- **{class_name}**: {count}")
-
-# Kamera
-elif option == "Gunakan Kamera (Flip)":
-    st.markdown("### Kamera (Depan ↔ Belakang)")
-
-    # HTML + JS kamera dengan flip dan ambil gambar
     js_code = """
     <script>
-      let useBackCamera = true;
       let currentStream;
 
       async function startCamera() {
@@ -89,7 +68,7 @@ elif option == "Gunakan Kamera (Flip)":
 
         const constraints = {
           video: {
-            facingMode: useBackCamera ? { exact: "environment" } : "user"
+            facingMode: { exact: "environment" }
           }
         };
 
@@ -102,11 +81,6 @@ elif option == "Gunakan Kamera (Flip)":
         }
       }
 
-      function flipCamera() {
-        useBackCamera = !useBackCamera;
-        startCamera();
-      }
-
       function takePhoto() {
         const video = document.getElementById("video");
         const canvas = document.getElementById("canvas");
@@ -115,40 +89,54 @@ elif option == "Gunakan Kamera (Flip)":
         canvas.getContext('2d').drawImage(video, 0, 0);
         const dataUrl = canvas.toDataURL('image/png');
 
-        // Kirim ke Streamlit
         const imageInput = window.parent.document.querySelector("input#camera_image_input");
         imageInput.value = dataUrl;
         imageInput.dispatchEvent(new Event("input", { bubbles: true }));
       }
 
-      window.onload = startCamera;
+      window.onload = () => {
+        startCamera();
+        document.getElementById("takeBtn").onclick = takePhoto;
+      };
     </script>
+
     <video id="video" autoplay playsinline style="width: 100%; border: 1px solid gray;"></video>
-    <canvas id="canvas" style="display: none;"></canvas><br>
-    <button onclick="flipCamera()">🔄 Flip Kamera</button>
-    <button onclick="takePhoto()">📸 Ambil Gambar</button>
+    <canvas id="canvas" style="display: none;"></canvas>
+    <button id="takeBtn" style="margin-top: 10px;">📸 Ambil Gambar</button>
     """
 
-    # Render komponen kamera
-    st.components.v1.html(js_code, height=480)
+    st.components.v1.html(js_code, height=500)
 
-    # Tempat untuk hasil base64 dari foto
     base64_img = st.text_input("📷 Gambar kamera:", key="camera_image_input", label_visibility="collapsed")
 
     if base64_img:
-        # Decode dan tampilkan
         header, encoded = base64_img.split(",", 1)
         decoded_bytes = base64.b64decode(encoded)
         image = Image.open(BytesIO(decoded_bytes))
         st.image(image, caption="📷 Gambar dari Kamera", use_container_width=True)
 
-        # Langsung prediksi otomatis
+        # Langsung prediksi
+        with st.spinner("🔍 Memproses gambar..."):
+            model = load_model()
+            results = predict_image(model, image)
+            processed_image, class_counts = draw_results(image, results)
+
+            st.image(processed_image, caption="📊 Hasil Deteksi", use_container_width=True)
+
+            st.subheader("Jumlah Objek Terdeteksi:")
+            for class_name, count in class_counts.items():
+                st.write(f"- **{class_name}**: {count}")
+
+# Tombol prediksi manual jika upload
+if image and option == "Upload Gambar":
+    if st.button("🔍 Prediksi"):
         with st.spinner("Sedang memproses prediksi..."):
             model = load_model()
             results = predict_image(model, image)
             processed_image, class_counts = draw_results(image, results)
 
-            st.image(processed_image, caption="🧠 Hasil Deteksi", use_container_width=True)
-            st.subheader("📊 Jumlah Objek Terdeteksi:")
+            st.image(processed_image, caption="📊 Hasil Deteksi", use_container_width=True)
+
+            st.subheader("Jumlah Objek Terdeteksi:")
             for class_name, count in class_counts.items():
                 st.write(f"- **{class_name}**: {count}")
