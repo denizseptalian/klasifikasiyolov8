@@ -85,9 +85,10 @@ elif option == "Gunakan Kamera":
     st.markdown("### Kamera Belakang (Environment)")
 
     camera_code = """
-    <div>
-        <video id="video" autoplay playsinline width="100%" style="border:1px solid gray;"></video>
-        <button onclick="takePhoto()" style="margin-top:10px;">📸 Ambil Gambar</button>
+    <div style="text-align:center;">
+        <video id="video" autoplay playsinline style="width:100%; max-width:100%; border:1px solid gray;"></video>
+        <br/>
+        <button id="captureBtn" style="margin-top:10px; padding:10px 20px; font-size:16px;">📸 Ambil Gambar</button>
         <canvas id="canvas" style="display:none;"></canvas>
     </div>
 
@@ -95,7 +96,7 @@ elif option == "Gunakan Kamera":
         async function startCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: { exact: "environment" } },
+                    video: { facingMode: { ideal: "environment" } },
                     audio: false
                 });
                 const video = document.getElementById('video');
@@ -105,25 +106,30 @@ elif option == "Gunakan Kamera":
             }
         }
 
-        function takePhoto() {
-            const video = document.getElementById('video');
-            const canvas = document.getElementById('canvas');
-            const context = canvas.getContext('2d');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            context.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const dataURL = canvas.toDataURL('image/png');
+        document.addEventListener("DOMContentLoaded", () => {
+            startCamera();
+            document.getElementById("captureBtn").addEventListener("click", () => {
+                const video = document.getElementById('video');
+                const canvas = document.getElementById('canvas');
+                const context = canvas.getContext('2d');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const dataURL = canvas.toDataURL('image/png');
 
-            const inputBox = window.parent.document.querySelector('textarea[data-testid="stTextArea"]');
-            inputBox.value = dataURL;
-            inputBox.dispatchEvent(new Event("input", { bubbles: true }));
-        }
-
-        window.onload = startCamera;
+                const textarea = window.parent.document.querySelector('textarea[data-testid="stTextArea"]');
+                if (textarea) {
+                    textarea.value = dataURL;
+                    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+                }
+            });
+        });
     </script>
     """
 
-    st.components.v1.html(camera_code, height=500)
+    st.components.v1.html(camera_code, height=600)
+
+    # Tempat tersembunyi untuk input dari kamera
     base64_img = st.text_area("Hidden Camera Input", value=st.session_state["camera_image"], label_visibility="collapsed")
 
     if base64_img and base64_img.startswith("data:image"):
