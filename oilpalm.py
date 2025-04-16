@@ -14,7 +14,7 @@ st.set_page_config(page_title="Deteksi Buah Sawit", layout="centered")
 # Load model hanya sekali
 @st.cache_resource
 def load_model():
-    return YOLO("best.pt")  # Ganti dengan path model YOLOv8 kamu
+    return YOLO("best2.pt")  # Ganti dengan path modelmu
 
 # Fungsi prediksi
 def predict_image(model, image):
@@ -29,10 +29,9 @@ label_to_color = {
     "mentah": Color.BLACK
 }
 
-box_annotator = BoxAnnotator()
 label_annotator = LabelAnnotator()
 
-# Fungsi anotasi hasil
+# Fungsi untuk menggambar bounding box
 def draw_results(image, results):
     img = np.array(image.convert("RGB"))
     class_counts = Counter()
@@ -52,35 +51,36 @@ def draw_results(image, results):
 
             class_counts[class_name] += 1
 
+            box_annotator = BoxAnnotator(color=color)
             detection = Detections(
                 xyxy=np.array([box]),
                 confidence=np.array([conf]),
                 class_id=np.array([class_id])
             )
 
-            img = box_annotator.annotate(scene=img, detections=detection, color=color)
-            img = label_annotator.annotate(scene=img, detections=detection, labels=[label], color=color)
+            img = box_annotator.annotate(scene=img, detections=detection)
+            img = label_annotator.annotate(scene=img, detections=detection, labels=[label])
 
     return img, class_counts
 
-# Inisialisasi session state kamera
+# Inisialisasi session_state untuk kamera
 if "camera_image" not in st.session_state:
     st.session_state["camera_image"] = ""
 
-# Judul
+# Judul aplikasi
 st.title("📷 Deteksi dan Klasifikasi Kematangan Buah Sawit")
 st.markdown("Pilih metode input gambar:")
 option = st.radio("", ["Upload Gambar", "Gunakan Kamera"])
 image = None
 
-# Upload Gambar
+# Upload gambar dari file
 if option == "Upload Gambar":
     uploaded_file = st.file_uploader("Unggah gambar", type=["jpg", "jpeg", "png"])
     if uploaded_file:
         image = Image.open(uploaded_file)
         st.image(image, caption="Gambar yang diunggah", use_container_width=True)
 
-# Kamera (dengan JS)
+# Kamera langsung
 elif option == "Gunakan Kamera":
     st.markdown("### Kamera Belakang (Environment)")
 
@@ -137,7 +137,7 @@ elif option == "Gunakan Kamera":
         except Exception as e:
             st.error(f"Gagal memproses gambar: {e}")
 
-# Jika ada gambar, jalankan deteksi
+# Proses deteksi jika ada gambar
 if image:
     with st.spinner("🔍 Memproses gambar..."):
         model = load_model()
