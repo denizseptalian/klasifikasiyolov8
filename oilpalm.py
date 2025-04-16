@@ -14,7 +14,7 @@ st.set_page_config(page_title="Deteksi Buah Sawit", layout="centered")
 # Load model hanya sekali
 @st.cache_resource
 def load_model():
-    return YOLO("best.pt")  # Ganti dengan path modelmu
+    return YOLO("best2.pt")  # Ganti dengan path modelmu
 
 # Fungsi prediksi
 def predict_image(model, image):
