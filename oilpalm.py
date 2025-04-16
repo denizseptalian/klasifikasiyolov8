@@ -6,7 +6,9 @@ from collections import Counter
 import base64
 from io import BytesIO
 from ultralytics import YOLO
+from supervision import BoxAnnotator, LabelAnnotator, Color
 
+# Konfigurasi halaman
 st.set_page_config(page_title="Deteksi Buah Sawit", layout="centered")
 
 # Load model hanya sekali
@@ -14,11 +16,24 @@ st.set_page_config(page_title="Deteksi Buah Sawit", layout="centered")
 def load_model():
     return YOLO("best2.pt")  # Ganti dengan path modelmu
 
+# Fungsi prediksi
 def predict_image(model, image):
     image = np.array(image.convert("RGB"))
     results = model(image)
     return results
 
+# Mapping warna berdasarkan label
+label_to_color = {
+    "masak": Color.RED,
+    "mengkal": Color.YELLOW,
+    "mentah": Color.BLACK
+}
+
+# Inisialisasi annotator
+box_annotator = BoxAnnotator()
+label_annotator = LabelAnnotator()
+
+# Fungsi untuk menggambar hasil deteksi
 def draw_results(image, results):
     img = np.array(image.convert("RGB"))
     class_counts = Counter()
@@ -30,14 +45,18 @@ def draw_results(image, results):
         for box in boxes:
             x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
             class_id = int(box.cls[0].item())
-            label = f"{names[class_id]}: {box.conf[0]:.2f}"
+            class_name = names[class_id]
+            confidence = box.conf[0].item()
+            label_text = f"{class_name}: {confidence:.2f}"
+            color = label_to_color.get(class_name, Color.WHITE)
 
-            class_counts[names[class_id]] += 1
-            cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            cv2.putText(img, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            class_counts[class_name] += 1
+
+            # Tambahkan anotasi ke gambar
+            img = box_annotator.annotate(img, boxes=np.array([[x1, y1, x2, y2]]), color=color)
+            img = label_annotator.annotate(img, labels=[label_text], boxes=np.array([[x1, y1, x2, y2]]), color=color)
 
     return img, class_counts
-
 
 # Inisialisasi session_state
 if "camera_image" not in st.session_state:
@@ -49,7 +68,6 @@ st.markdown("Pilih metode input gambar:")
 
 # Pilih metode input
 option = st.radio("", ["Upload Gambar", "Gunakan Kamera"])
-
 image = None
 
 # Upload gambar manual
