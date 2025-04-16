@@ -24,9 +24,9 @@ def predict_image(model, image):
 
 # Warna bounding box sesuai label
 label_to_color = {
-    "masak": Color.RED,
-    "mengkal": Color.YELLOW,
-    "mentah": Color.BLACK
+    "Masak": Color.RED,
+    "Mengkal": Color.YELLOW,
+    "Mentah": Color.BLACK
 }
 
 label_annotator = LabelAnnotator()
