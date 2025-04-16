@@ -6,34 +6,33 @@ from collections import Counter
 import base64
 from io import BytesIO
 from ultralytics import YOLO
-from supervision import BoxAnnotator, LabelAnnotator, Color
+from supervision import BoxAnnotator, LabelAnnotator, Color, Detections
 
-# Konfigurasi halaman
+# Konfigurasi halaman Streamlit
 st.set_page_config(page_title="Deteksi Buah Sawit", layout="centered")
 
 # Load model hanya sekali
 @st.cache_resource
 def load_model():
-    return YOLO("best2.pt")  # Ganti dengan path modelmu
+    return YOLO("best.pt")  # Ganti dengan path ke model YOLOv8 kamu
 
-# Fungsi prediksi
+# Fungsi untuk prediksi
 def predict_image(model, image):
     image = np.array(image.convert("RGB"))
     results = model(image)
     return results
 
-# Mapping warna berdasarkan label
+# Mapping warna label
 label_to_color = {
     "masak": Color.RED,
     "mengkal": Color.YELLOW,
     "mentah": Color.BLACK
 }
 
-# Inisialisasi annotator
 box_annotator = BoxAnnotator()
 label_annotator = LabelAnnotator()
 
-# Fungsi untuk menggambar hasil deteksi
+# Fungsi untuk menggambar hasil prediksi
 def draw_results(image, results):
     img = np.array(image.convert("RGB"))
     class_counts = Counter()
@@ -42,19 +41,29 @@ def draw_results(image, results):
         boxes = result.boxes
         names = result.names
 
-        for box in boxes:
-            x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-            class_id = int(box.cls[0].item())
-            class_name = names[class_id]
-            confidence = box.conf[0].item()
-            label_text = f"{class_name}: {confidence:.2f}"
-            color = label_to_color.get(class_name, Color.WHITE)
+        xyxy = boxes.xyxy.cpu().numpy()
+        class_ids = boxes.cls.cpu().numpy().astype(int)
+        confidences = boxes.conf.cpu().numpy()
 
+        for class_id in class_ids:
+            class_name = names[class_id]
             class_counts[class_name] += 1
 
-            # Tambahkan anotasi ke gambar
-            img = box_annotator.annotate(img, boxes=np.array([[x1, y1, x2, y2]]), color=color)
-            img = label_annotator.annotate(img, labels=[label_text], boxes=np.array([[x1, y1, x2, y2]]), color=color)
+        labels = [
+            f"{names[class_id]}: {conf:.2f}"
+            for class_id, conf in zip(class_ids, confidences)
+        ]
+
+        colors = [label_to_color.get(names[class_id], Color.WHITE) for class_id in class_ids]
+
+        detections = Detections(
+            xyxy=xyxy,
+            confidence=confidences,
+            class_id=class_ids
+        )
+
+        img = box_annotator.annotate(scene=img, detections=detections, color=colors)
+        img = label_annotator.annotate(scene=img, detections=detections, labels=labels, color=colors)
 
     return img, class_counts
 
@@ -62,22 +71,20 @@ def draw_results(image, results):
 if "camera_image" not in st.session_state:
     st.session_state["camera_image"] = ""
 
-# Judul Aplikasi
+# Judul dan opsi input
 st.title("📷 Deteksi dan Klasifikasi Kematangan Buah Sawit")
 st.markdown("Pilih metode input gambar:")
-
-# Pilih metode input
 option = st.radio("", ["Upload Gambar", "Gunakan Kamera"])
 image = None
 
-# Upload gambar manual
+# Upload gambar
 if option == "Upload Gambar":
     uploaded_file = st.file_uploader("Unggah gambar", type=["jpg", "jpeg", "png"])
     if uploaded_file:
         image = Image.open(uploaded_file)
         st.image(image, caption="Gambar yang diunggah", use_container_width=True)
 
-# Kamera langsung (belakang)
+# Kamera langsung
 elif option == "Gunakan Kamera":
     st.markdown("### Kamera Belakang (Environment)")
 
@@ -111,7 +118,6 @@ elif option == "Gunakan Kamera":
             context.drawImage(video, 0, 0, canvas.width, canvas.height);
             const dataURL = canvas.toDataURL('image/png');
 
-            // Kirim data ke Streamlit
             const inputBox = window.parent.document.querySelector('textarea[data-testid="stTextArea"]');
             inputBox.value = dataURL;
             inputBox.dispatchEvent(new Event("input", { bubbles: true }));
@@ -121,14 +127,12 @@ elif option == "Gunakan Kamera":
     </script>
     """
 
-    # Tampilkan kamera dan tombol ambil
     st.components.v1.html(camera_code, height=500)
 
-    # Input tersembunyi untuk base64 image dari kamera
     base64_img = st.text_area("Hidden Camera Input", value=st.session_state["camera_image"], label_visibility="collapsed")
 
     if base64_img and base64_img.startswith("data:image"):
-        st.session_state["camera_image"] = base64_img  # Simpan base64 image
+        st.session_state["camera_image"] = base64_img
 
         try:
             header, encoded = base64_img.split(",", 1)
@@ -139,7 +143,7 @@ elif option == "Gunakan Kamera":
         except Exception as e:
             st.error(f"Gagal memproses gambar: {e}")
 
-# Jalankan prediksi jika ada gambar
+# Jalankan prediksi
 if image:
     with st.spinner("🔍 Memproses gambar..."):
         model = load_model()
