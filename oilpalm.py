@@ -8,21 +8,21 @@ from io import BytesIO
 from ultralytics import YOLO
 from supervision import BoxAnnotator, LabelAnnotator, Color, Detections
 
-# Konfigurasi halaman Streamlit
+# Konfigurasi halaman
 st.set_page_config(page_title="Deteksi Buah Sawit", layout="centered")
 
 # Load model hanya sekali
 @st.cache_resource
 def load_model():
-    return YOLO("best.pt")  # Ganti dengan path ke model YOLOv8 kamu
+    return YOLO("best2.pt")  # Ganti dengan path model YOLOv8 kamu
 
-# Fungsi untuk prediksi
+# Fungsi prediksi
 def predict_image(model, image):
     image = np.array(image.convert("RGB"))
     results = model(image)
     return results
 
-# Mapping warna label
+# Warna bounding box sesuai label
 label_to_color = {
     "masak": Color.RED,
     "mengkal": Color.YELLOW,
@@ -32,7 +32,7 @@ label_to_color = {
 box_annotator = BoxAnnotator()
 label_annotator = LabelAnnotator()
 
-# Fungsi untuk menggambar hasil prediksi
+# Fungsi anotasi hasil
 def draw_results(image, results):
     img = np.array(image.convert("RGB"))
     class_counts = Counter()
@@ -45,46 +45,42 @@ def draw_results(image, results):
         class_ids = boxes.cls.cpu().numpy().astype(int)
         confidences = boxes.conf.cpu().numpy()
 
-        for class_id in class_ids:
+        for box, class_id, conf in zip(xyxy, class_ids, confidences):
             class_name = names[class_id]
+            label = f"{class_name}: {conf:.2f}"
+            color = label_to_color.get(class_name, Color.WHITE)
+
             class_counts[class_name] += 1
 
-        labels = [
-            f"{names[class_id]}: {conf:.2f}"
-            for class_id, conf in zip(class_ids, confidences)
-        ]
+            detection = Detections(
+                xyxy=np.array([box]),
+                confidence=np.array([conf]),
+                class_id=np.array([class_id])
+            )
 
-        colors = [label_to_color.get(names[class_id], Color.WHITE) for class_id in class_ids]
-
-        detections = Detections(
-            xyxy=xyxy,
-            confidence=confidences,
-            class_id=class_ids
-        )
-
-        img = box_annotator.annotate(scene=img, detections=detections, color=colors)
-        img = label_annotator.annotate(scene=img, detections=detections, labels=labels, color=colors)
+            img = box_annotator.annotate(scene=img, detections=detection, color=color)
+            img = label_annotator.annotate(scene=img, detections=detection, labels=[label], color=color)
 
     return img, class_counts
 
-# Inisialisasi session_state
+# Inisialisasi session state kamera
 if "camera_image" not in st.session_state:
     st.session_state["camera_image"] = ""
 
-# Judul dan opsi input
+# Judul
 st.title("📷 Deteksi dan Klasifikasi Kematangan Buah Sawit")
 st.markdown("Pilih metode input gambar:")
 option = st.radio("", ["Upload Gambar", "Gunakan Kamera"])
 image = None
 
-# Upload gambar
+# Upload Gambar
 if option == "Upload Gambar":
     uploaded_file = st.file_uploader("Unggah gambar", type=["jpg", "jpeg", "png"])
     if uploaded_file:
         image = Image.open(uploaded_file)
         st.image(image, caption="Gambar yang diunggah", use_container_width=True)
 
-# Kamera langsung
+# Kamera (dengan JS)
 elif option == "Gunakan Kamera":
     st.markdown("### Kamera Belakang (Environment)")
 
@@ -128,7 +124,6 @@ elif option == "Gunakan Kamera":
     """
 
     st.components.v1.html(camera_code, height=500)
-
     base64_img = st.text_area("Hidden Camera Input", value=st.session_state["camera_image"], label_visibility="collapsed")
 
     if base64_img and base64_img.startswith("data:image"):
@@ -139,11 +134,10 @@ elif option == "Gunakan Kamera":
             decoded = base64.b64decode(encoded)
             image = Image.open(BytesIO(decoded))
             st.image(image, caption="📷 Gambar dari Kamera", use_container_width=True)
-
         except Exception as e:
             st.error(f"Gagal memproses gambar: {e}")
 
-# Jalankan prediksi
+# Jika ada gambar, jalankan deteksi
 if image:
     with st.spinner("🔍 Memproses gambar..."):
         model = load_model()
