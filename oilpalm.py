@@ -14,7 +14,7 @@ st.set_page_config(page_title="Deteksi Buah Sawit", layout="centered")
 # Load model hanya sekali
 @st.cache_resource
 def load_model():
-    return YOLO("best2.pt")  # Ganti dengan path modelmu
+    return YOLO("best2.pt")  # Ganti path model sesuai punyamu
 
 # Fungsi prediksi
 def predict_image(model, image):
@@ -31,7 +31,7 @@ label_to_color = {
 
 label_annotator = LabelAnnotator()
 
-# Fungsi untuk menggambar bounding box
+# Gambar hasil deteksi
 def draw_results(image, results):
     img = np.array(image.convert("RGB"))
     class_counts = Counter()
@@ -63,17 +63,17 @@ def draw_results(image, results):
 
     return img, class_counts
 
-# Inisialisasi session_state untuk kamera
+# Inisialisasi
 if "camera_image" not in st.session_state:
     st.session_state["camera_image"] = ""
 
-# Judul aplikasi
+# Judul
 st.title("📷 Deteksi dan Klasifikasi Kematangan Buah Sawit")
 st.markdown("Pilih metode input gambar:")
 option = st.radio("", ["Upload Gambar", "Gunakan Kamera"])
 image = None
 
-# Upload gambar dari file
+# Upload dari file
 if option == "Upload Gambar":
     uploaded_file = st.file_uploader("Unggah gambar", type=["jpg", "jpeg", "png"])
     if uploaded_file:
@@ -84,11 +84,12 @@ if option == "Upload Gambar":
 elif option == "Gunakan Kamera":
     st.markdown("### Kamera Belakang (Environment)")
 
-    camera_code = """
+    # HTML kamera + tombol ambil gambar
+    camera_html = """
     <div style="text-align:center;">
-        <video id="video" autoplay playsinline style="width:100%; max-width:100%; border:1px solid gray;"></video>
+        <video id="video" autoplay playsinline style="width:100%; border:1px solid gray;"></video>
         <br/>
-        <button id="captureBtn" style="margin-top:10px; padding:10px 20px; font-size:16px;">📸 Ambil Gambar</button>
+        <button onclick="takePhoto()" style="margin-top:10px; padding:10px 20px;">📸 Ambil Gambar</button>
         <canvas id="canvas" style="display:none;"></canvas>
     </div>
 
@@ -102,37 +103,37 @@ elif option == "Gunakan Kamera":
                 const video = document.getElementById('video');
                 video.srcObject = stream;
             } catch (err) {
-                alert("Gagal mengakses kamera belakang: " + err.message);
+                alert("Gagal mengakses kamera: " + err.message);
             }
         }
 
-        document.addEventListener("DOMContentLoaded", () => {
-            startCamera();
-            document.getElementById("captureBtn").addEventListener("click", () => {
-                const video = document.getElementById('video');
-                const canvas = document.getElementById('canvas');
-                const context = canvas.getContext('2d');
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                context.drawImage(video, 0, 0, canvas.width, canvas.height);
-                const dataURL = canvas.toDataURL('image/png');
+        function takePhoto() {
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const dataURL = canvas.toDataURL('image/png');
 
-                const textarea = window.parent.document.querySelector('textarea[data-testid="stTextArea"]');
-                if (textarea) {
-                    textarea.value = dataURL;
-                    textarea.dispatchEvent(new Event("input", { bubbles: true }));
-                }
-            });
-        });
+            const input = window.parent.document.querySelector('input[data-testid="stTextInput"]');
+            if (input) {
+                input.value = dataURL;
+                input.dispatchEvent(new Event("input", { bubbles: true }));
+            }
+        }
+
+        document.addEventListener("DOMContentLoaded", startCamera);
     </script>
     """
 
-    st.components.v1.html(camera_code, height=600)
+    # Tampilkan komponen HTML
+    st.components.v1.html(camera_html, height=600)
 
-    # Tempat tersembunyi untuk input dari kamera
-    base64_img = st.text_area("Hidden Camera Input", value=st.session_state["camera_image"], label_visibility="collapsed")
+    # Gunakan text_input sebagai "jembatan"
+    base64_img = st.text_input("Gambar dari Kamera (tersembunyi)", type="default", label_visibility="collapsed")
 
-    if base64_img and base64_img.startswith("data:image"):
+    if base64_img.startswith("data:image"):
         st.session_state["camera_image"] = base64_img
 
         try:
@@ -141,9 +142,9 @@ elif option == "Gunakan Kamera":
             image = Image.open(BytesIO(decoded))
             st.image(image, caption="📷 Gambar dari Kamera", use_container_width=True)
         except Exception as e:
-            st.error(f"Gagal memproses gambar: {e}")
+            st.error(f"Gagal memproses gambar dari kamera: {e}")
 
-# Proses deteksi jika ada gambar
+# Proses deteksi
 if image:
     with st.spinner("🔍 Memproses gambar..."):
         model = load_model()
